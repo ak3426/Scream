@@ -2,32 +2,28 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Voice Wave Visualizer</title>
+<title>Voice Visualizer Fixed</title>
 
 <style>
 body {
   margin: 0;
   overflow: hidden;
-  background: #020b18;
+  background: black;
 }
 
 canvas {
   display: block;
 }
 
-#controls {
+#start {
   position: fixed;
-  bottom: 20px;
+  top: 20px;
   left: 20px;
   z-index: 10;
-}
-
-button {
-  margin: 5px;
-  padding: 8px 12px;
-  border: 1px solid white;
+  padding: 10px 14px;
   background: transparent;
   color: white;
+  border: 1px solid white;
   cursor: pointer;
 }
 </style>
@@ -35,57 +31,68 @@ button {
 
 <body>
 
+<button id="start">Start Mic</button>
 <canvas id="c"></canvas>
-
-<div id="controls">
-  <button id="start">Start Mic</button>
-</div>
 
 <script>
 const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d");
 
-let W, H;
+let W = canvas.width = window.innerWidth;
+let H = canvas.height = window.innerHeight;
 
-function resize() {
+window.addEventListener("resize", () => {
   W = canvas.width = window.innerWidth;
   H = canvas.height = window.innerHeight;
-}
-window.addEventListener("resize", resize);
-resize();
+});
 
 
 // =====================
-// 🖼 FACE IMAGE
+// 🖼 IMAGE (FACE)
 // =====================
 const faceImg = new Image();
-faceImg.src = "scream.jpg"; // put in same folder
+faceImg.src = "scream.jpg";
+
+faceImg.onload = () => {
+  console.log("Image loaded ✔");
+};
+
+faceImg.onerror = () => {
+  console.log("Image NOT found ❌ check file name/path");
+};
 
 
 // =====================
-// 🎧 AUDIO SETUP
+// 🎧 AUDIO
 // =====================
 let analyser, dataArray;
 let running = false;
 
 document.getElementById("start").onclick = async () => {
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  const audioCtx = new AudioContext();
-  const source = audioCtx.createMediaStreamSource(stream);
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-  analyser = audioCtx.createAnalyser();
-  analyser.fftSize = 4096;
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const source = audioCtx.createMediaStreamSource(stream);
 
-  source.connect(analyser);
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 2048;
 
-  dataArray = new Uint8Array(analyser.frequencyBinCount);
+    source.connect(analyser);
 
-  running = true;
+    dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+    running = true;
+
+    console.log("Mic ON ✔");
+  } catch (err) {
+    console.log("Mic error:", err);
+  }
 };
 
 
 // =====================
-// SMOOTH AUDIO VALUES
+// SMOOTH VALUES
 // =====================
 let bass = 0;
 let treble = 0;
@@ -93,62 +100,67 @@ let energy = 0;
 
 
 // =====================
-// MAIN LOOP
+// DRAW LOOP
 // =====================
-function render(t = 0) {
-  requestAnimationFrame(render);
+function draw(t = 0) {
+  requestAnimationFrame(draw);
 
-  // 🌫 soft fade for trails
-  ctx.fillStyle = "rgba(2,11,24,0.25)";
+  // background fade (IMPORTANT)
+  ctx.fillStyle = "rgba(0,0,0,0.25)";
   ctx.fillRect(0, 0, W, H);
 
-  // 🎧 audio update
+  // ALWAYS draw waves (even without mic)
+  let fakeBass = Math.sin(t * 0.002) * 0.5 + 0.5;
+  let fakeTreble = Math.cos(t * 0.003) * 0.5 + 0.5;
+
+  let b = fakeBass;
+  let tr = fakeTreble;
+
+  // real audio override
   if (running && analyser) {
     analyser.getByteFrequencyData(dataArray);
 
-    let low = 0;
-    let high = 0;
+    let low = 0, high = 0;
 
     for (let i = 0; i < dataArray.length; i++) {
       if (i < 80) low += dataArray[i];
-      if (i > 500 && i < 1200) high += dataArray[i];
+      if (i > 200 && i < 800) high += dataArray[i];
     }
 
-    low = low / 80 / 255;
-    high = high / 700 / 255;
-
-    bass = bass * 0.85 + low * 0.15;
-    treble = treble * 0.85 + high * 0.15;
-    energy = (bass + treble) / 2;
+    b = low / 80 / 255;
+    tr = high / 600 / 255;
   }
 
-  // 🌊 draw waves FIRST (behind face)
+  bass = bass * 0.85 + b * 0.15;
+  treble = treble * 0.85 + tr * 0.15;
+  energy = (bass + treble) / 2;
+
+  // 🌊 WAVES (UNDER FACE)
   drawWaves(t);
 
-  // 🖼 draw face LAST (on top)
-  if (faceImg.complete) {
+  // 🖼 FACE (ON TOP)
+  if (faceImg.complete && faceImg.naturalWidth > 0) {
     ctx.drawImage(faceImg, 0, 0, W, H);
   }
 }
 
-render();
+requestAnimationFrame(draw);
 
 
 // =====================
-// 🌊 ORGANIC WAVE SYSTEM
+// 🌊 WAVE SYSTEM (FIXED + STRONG VISIBILITY)
 // =====================
 function drawWaves(t) {
 
   let centerY = H / 2;
 
-  // MAIN WAVE
   ctx.beginPath();
 
   for (let x = 0; x < W; x += 4) {
 
     let wave =
-      Math.sin(x * 0.01 + t * 0.002 + bass * 6) * 80 +
-      Math.sin(x * 0.02 + t * 0.001 + treble * 10) * 50;
+      Math.sin(x * 0.01 + t * 0.002 + bass * 8) * 90 +
+      Math.cos(x * 0.02 + t * 0.003 + treble * 10) * 60;
 
     let y = centerY + wave;
 
@@ -156,19 +168,19 @@ function drawWaves(t) {
     else ctx.lineTo(x, y);
   }
 
-  ctx.strokeStyle = "rgba(255,120,200,0.8)";
+  ctx.strokeStyle = `rgba(0,200,255,${0.4 + energy})`;
   ctx.lineWidth = 2 + energy * 6;
   ctx.stroke();
 
 
-  // SECOND LAYER WAVE (depth)
+  // second wave layer (depth)
   ctx.beginPath();
 
   for (let x = 0; x < W; x += 6) {
 
     let wave =
-      Math.cos(x * 0.015 + t * 0.002 - bass * 5) * 120 +
-      Math.sin(x * 0.01 + t * 0.003 + treble * 8) * 60;
+      Math.sin(x * 0.015 + t * 0.002 - bass * 6) * 120 +
+      Math.cos(x * 0.01 + t * 0.003 + treble * 8) * 70;
 
     let y = centerY + wave;
 
@@ -176,8 +188,8 @@ function drawWaves(t) {
     else ctx.lineTo(x, y);
   }
 
-  ctx.strokeStyle = "rgba(80,200,255,0.6)";
-  ctx.lineWidth = 1 + energy * 4;
+  ctx.strokeStyle = `rgba(255,100,200,${0.3 + energy})`;
+  ctx.lineWidth = 1 + energy * 5;
   ctx.stroke();
 }
 </script>
